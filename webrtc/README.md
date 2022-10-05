@@ -44,7 +44,7 @@ Interest Group: [@marten-seemann]
 
 ## Requirements
 
-- Loading a remote nodes certificate into ones browser trust-store is not an
+- Loading a remote node's certificate into one's browser trust-store is not an
   option, i.e. doesn't scale.
 
 - No dependency on central STUN and/or TURN servers.
@@ -92,11 +92,9 @@ reachable but _B_ does not have a TLS certificate trusted by _A_.
 3. _A_ instantiates a `RTCPeerConnection`. See
    [`RTCPeerConnection()`](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/RTCPeerConnection).
 
-   _A_ MAY reuse the same certificate across `RTCPeerConnection`s. Though one
-   should note that reusing the certificate can be used to identify _A_ across
-   connections by on-path observers given that WebRTC uses TLS 1.2. Thus this
-   specification RECOMMENDS that _A_, i.e. the browser, does not reuse the same
-   certificate across `RTCPeerConnection`.
+   _A_ SHOULD NOT reuse the same certificate across `RTCPeerConnection`s
+   because it can be used to identify _A_ across connections by on-path
+   observers given that WebRTC uses TLS 1.2.
 
 4. _A_ constructs _B_'s SDP offer locally based on _B_'s multiaddr and sets it
    via
@@ -138,6 +136,15 @@ reachable but _B_ does not have a TLS certificate trusted by _A_.
 
 9. The remote is authenticated via an additional Noise handshake. See
    [Connection Security](#connection-security).
+
+#### Implementation notes
+
+- Implementations SHOULD setup all the necessary callbacks (e.g.
+  [`ondatachannel`](https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/datachannel_event))
+  BEFORE starting the Noise handshake (before step #9 above). This is to avoid
+  scenarios like one where _A_ initiates a stream before _B_ got a chance to
+  set the `ondatachannel` callback. This would result in _B_ ignoring all the
+  messages coming from _A_ targeting that stream.
 
 #### Open Questions
 
@@ -277,29 +284,6 @@ overriding the default value of `ordered` `true` to `false` when creating a new
 data channel via
 [`RTCPeerConnection.createDataChannel`](https://www.w3.org/TR/webrtc/#dom-peerconnection-createdatachannel).
 
-### Open Questions
-
-- There are two ways to open a `RTCDataChannel`, either via `negotiated: true`
-  and thus out-of-band channel ID negotiation or `negotiated: false` and thus
-  in-band channel ID negotiation.
-
-  Is the assumption correct that in-band stream ID negotiation requires an
-  additional round trip? If so how about using out-of-band channel id
-  negotiation only (thus no additional round trip) based on the DTLS role?
-
-  > When one side wants to open a channel using out-of-band negotiation, it
-  > picks a stream. Unless otherwise defined or negotiated, the streams are
-  > picked based on the DTLS role (the client picks even stream identifiers, and
-  > the server picks odd stream identifiers).
-
-  https://www.rfc-editor.org/rfc/rfc8831#name-opening-a-data-channel
-
-- Do browsers allow reuse of `RTCDataChannel` IDs? If so, should we allow libp2p
-  WebRTC implementations to reuse channel IDs of previously closed channels?
-  Motivation would be to have more than 2^16 channels throughout the lifetime of
-  a WebRTC connection. Note that this would still restrict a connection to at
-  most 2^16 concurrent channels.
-
 ## Connection Security
 
 Note that the below uses the message framing described in
@@ -434,6 +418,40 @@ accept streams before completion of the handshake.
   Using Protobuf allows us to evolve the protocol in a backwards compatibile way
   going forward. Using Protobuf is consistent with the many other libp2p
   protocols. These benefits outweigh the drawback of additional overhead.
+
+- There are two ways to open a `RTCDataChannel`, either via `negotiated: true`
+  and thus out-of-band channel ID negotiation or `negotiated: false` and thus
+  in-band channel ID negotiation.
+
+  Is the assumption correct that in-band stream ID negotiation requires an
+  additional round trip? If so how about using out-of-band channel id
+  negotiation only (thus no additional round trip) based on the DTLS role?
+
+  > When one side wants to open a channel using out-of-band negotiation, it
+  > picks a stream. Unless otherwise defined or negotiated, the streams are
+  > picked based on the DTLS role (the client picks even stream identifiers, and
+  > the server picks odd stream identifiers).
+
+  https://www.rfc-editor.org/rfc/rfc8831#name-opening-a-data-channel
+
+  Not a round trip, but an additional message sent from _A_ to _B_ instructing
+  _B_ to open a channel with the parameters attached to that message.
+
+  Out-of-band channel ID negotiation is possible, although it would require
+  modifying the WebRTC libraries (e.g. Go's Pion, Rust's webrtc-rs). Current
+  client libraries don't expose the handler for data w/ a previously unseen
+  channel ID.
+
+- Do browsers allow reuse of `RTCDataChannel` IDs? If so, should we allow libp2p
+  WebRTC implementations to reuse channel IDs of previously closed channels?
+  Motivation would be to have more than 2^16 channels throughout the lifetime of
+  a WebRTC connection. Note that this would still restrict a connection to at
+  most 2^16 concurrent channels.
+
+  [`libwebrtc`](https://source.chromium.org/chromium/chromium/src/+/main:third_party/webrtc/pc/data_channel_controller.cc;l=336;drc=0d0cbbeedf5831fe32e4823c0e5a854983c64ed8)
+  releases IDs once channels are closed, so they can be reused. This
+  functionality is baked in every WebRTC implementation (e.g. Go's Pion, Rust's
+  webrtc-rs) and can't be turned off via settings.
 
 [QUIC RFC]: https://www.rfc-editor.org/rfc/rfc9000.html
 [uvarint-spec]: https://github.com/multiformats/unsigned-varint

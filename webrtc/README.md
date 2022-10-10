@@ -434,9 +434,6 @@ accept streams before completion of the handshake.
 
   https://www.rfc-editor.org/rfc/rfc8831#name-opening-a-data-channel
 
-  Not a round trip, but an additional message sent from _A_ to _B_ instructing
-  _B_ to open a channel with the parameters attached to that message.
-
   Out-of-band channel ID negotiation is possible, although it would require
   modifying the WebRTC libraries (e.g. Go's Pion, Rust's webrtc-rs). Current
   client libraries don't expose the handler for data w/ a previously unseen
